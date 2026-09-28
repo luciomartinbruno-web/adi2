@@ -18,6 +18,10 @@ Local patches:
   guard — it is what bounds the copy, and without it the truncated path
   reaches `isResourcePathSafe`.
 
+- `src/lottie/lottieparser.cpp`: `ToStdString` passes `0`, not `NULL`, as
+  `WideCharToMultiByte`'s `int` byte count; g++ warns on the `NULL`
+  (`-Wconversion-null`) when building for Windows.
+
 - `src/lottie/lottieitem.cpp`: `kMaxShapeContentBudget` 15000 → 100000.
   The eight Noto emoji in `examples/assets/` need 6164..70843; at 15000
   `noto_rocket.json` lost 91% of its pixels. Exhaustion drops content

@@ -868,7 +868,7 @@ namespace
    std::string ToStdString( const std::wstring& wstr )
    {
        std::string str;
-       int         nchars = ::WideCharToMultiByte( CP_UTF8, 0, wstr.data(), (int)wstr.length(), NULL, NULL, NULL, NULL );
+       int         nchars = ::WideCharToMultiByte( CP_UTF8, 0, wstr.data(), (int)wstr.length(), NULL, 0, NULL, NULL );
        if ( nchars > 0 )
        {
            str.resize(nchars);
