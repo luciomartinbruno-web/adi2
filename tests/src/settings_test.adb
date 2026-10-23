@@ -558,6 +558,47 @@ procedure Settings_Test is
    end Test_Non_ASCII;
 
    ---------------------------------------------------------------------------
+   --  Test: Control characters survive a save and load
+   ---------------------------------------------------------------------------
+
+   procedure Test_Control_Chars is
+      --  Escape_String writes these as backslash-u escapes
+      Esc_Text  : constant String := "a" & Character'Val (16#1B#) & "b";
+      Soh_Text  : constant String := (1 => Character'Val (16#01#));
+   begin
+      Put_Line ("-- Control Character Tests --");
+
+      declare
+         Backend : aliased JSON_Settings_Backend;
+         Path    : constant String := Tmp_Dir & "settings.json";
+         Data    : Setting_Value := Empty_Map;
+      begin
+         Ensure_Tmp_Dir;
+
+         Insert (Data, "esc", To_Value (Esc_Text));
+         Insert (Data, "soh", To_Value (Soh_Text));
+         Insert (Data, "plain", To_Value ("kept"));
+
+         Backend.Save (Path, Data);
+
+         declare
+            Loaded : constant Setting_Value := Backend.Load (Path);
+         begin
+            Assert (Kind (Loaded) = Map_Kind,
+                    "Control chars: the file loads back as a map");
+            if Kind (Loaded) = Map_Kind then
+               Assert (As_String (Get (Loaded, "esc")) = Esc_Text,
+                       "Control chars: ESC round-trip");
+               Assert (As_String (Get (Loaded, "soh")) = Soh_Text,
+                       "Control chars: U+0001 round-trip");
+               Assert (As_String (Get (Loaded, "plain")) = "kept",
+                       "Control chars: the other settings are kept");
+            end if;
+         end;
+      end;
+   end Test_Control_Chars;
+
+   ---------------------------------------------------------------------------
    --  Test: Load from non-existent file returns Null_Value
    ---------------------------------------------------------------------------
 
@@ -751,6 +792,7 @@ begin
    Test_Special_Chars;
    Test_Saved_Bytes;
    Test_Non_ASCII;
+   Test_Control_Chars;
    Test_Missing_File;
    Test_Save_Failure_Raises;
    Test_Empty_Store;
