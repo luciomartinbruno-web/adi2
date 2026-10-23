@@ -1551,6 +1551,72 @@ package body Adi.MCP is
                         & Ada.Exceptions.Exception_Information (E));
    end Post_Render_Handler;
 
+   procedure Process_Command_File
+     (Win      : Adi.Window.Window_Handle;
+      Dir      : String;
+      Cmd_Name : String)
+   is
+      use Ada.Directories;
+      Cmd_Path  : constant String := Dir & "/" & Cmd_Name;
+      JSON      : constant String := Read_File (Cmd_Path);
+      Cmd       : constant String := JSON_Get_String (JSON, "command");
+      Req_Id_J  : constant String := JSON_Get_String (JSON, "req_id");
+
+      function Req_Id_From_Filename return String is
+         Prefix : constant String := "cmd_";
+         Suffix : constant String := ".json";
+      begin
+         if Cmd_Name'Length > Prefix'Length + Suffix'Length
+           and then Cmd_Name (Cmd_Name'First ..
+             Cmd_Name'First + Prefix'Length - 1) = Prefix
+           and then Cmd_Name (Cmd_Name'Last - Suffix'Length + 1 ..
+             Cmd_Name'Last) = Suffix
+         then
+            return Cmd_Name (Cmd_Name'First + Prefix'Length ..
+              Cmd_Name'Last - Suffix'Length);
+         end if;
+         return "";
+      end Req_Id_From_Filename;
+
+      Req_Id : constant String :=
+        (if Req_Id_J'Length > 0 then Req_Id_J
+         else Req_Id_From_Filename);
+   begin
+      if Exists (Cmd_Path) then
+         Delete_File (Cmd_Path);
+      end if;
+
+      if Req_Id'Length = 0 then
+         return;
+      end if;
+
+      if Cmd'Length = 0 then
+         declare
+            Resp_Path : constant String :=
+              Dir & "/resp_" & Req_Id & ".json";
+         begin
+            Atomic_Write (Resp_Path,
+              Error_Response (Req_Id, "missing command field"));
+         end;
+         return;
+      end if;
+
+      if Cmd = "screenshot" then
+         Pending_Screenshot := True;
+         Pending_Screenshot_Id := To_Unbounded_String (Req_Id);
+         Adi.Window.Request_Redraw (Win);
+      else
+         declare
+            Response  : constant String :=
+              Execute_Command_Full (JSON, Cmd, Req_Id);
+            Resp_Path : constant String :=
+              Dir & "/resp_" & Req_Id & ".json";
+         begin
+            Atomic_Write (Resp_Path, Response);
+         end;
+      end if;
+   end Process_Command_File;
+
    procedure Frame_Handler
      (Win : Adi.Window.Window_Handle)
    is
@@ -1559,7 +1625,6 @@ package body Adi.MCP is
       Srch : Search_Type;
       Ent  : Directory_Entry_Type;
 
-      Entry_Path : Unbounded_String;
       Entry_Name : Unbounded_String;
 
       use type Ada.Calendar.Time;
@@ -1577,71 +1642,10 @@ package body Adi.MCP is
 
          --  Read the entry out before ending the search rather than
          --  after it.
-         Entry_Path := To_Unbounded_String (Full_Name (Ent));
          Entry_Name := To_Unbounded_String (Simple_Name (Ent));
          End_Search (Srch);
 
-         declare
-            Cmd_Path  : constant String := To_String (Entry_Path);
-            Cmd_Name  : constant String := To_String (Entry_Name);
-            JSON      : constant String := Read_File (Cmd_Path);
-            Cmd       : constant String := JSON_Get_String (JSON, "command");
-            Req_Id_J  : constant String := JSON_Get_String (JSON, "req_id");
-
-            function Req_Id_From_Filename return String is
-               Prefix : constant String := "cmd_";
-               Suffix : constant String := ".json";
-            begin
-               if Cmd_Name'Length > Prefix'Length + Suffix'Length
-                 and then Cmd_Name (Cmd_Name'First ..
-                   Cmd_Name'First + Prefix'Length - 1) = Prefix
-                 and then Cmd_Name (Cmd_Name'Last - Suffix'Length + 1 ..
-                   Cmd_Name'Last) = Suffix
-               then
-                  return Cmd_Name (Cmd_Name'First + Prefix'Length ..
-                    Cmd_Name'Last - Suffix'Length);
-               end if;
-               return "";
-            end Req_Id_From_Filename;
-
-            Req_Id : constant String :=
-              (if Req_Id_J'Length > 0 then Req_Id_J
-               else Req_Id_From_Filename);
-         begin
-            if Exists (Cmd_Path) then
-               Delete_File (Cmd_Path);
-            end if;
-
-            if Req_Id'Length = 0 then
-               return;
-            end if;
-
-            if Cmd'Length = 0 then
-               declare
-                  Resp_Path : constant String :=
-                    Dir & "/resp_" & Req_Id & ".json";
-               begin
-                  Atomic_Write (Resp_Path,
-                    Error_Response (Req_Id, "missing command field"));
-               end;
-               return;
-            end if;
-
-            if Cmd = "screenshot" then
-               Pending_Screenshot := True;
-               Pending_Screenshot_Id := To_Unbounded_String (Req_Id);
-               Adi.Window.Request_Redraw (Win);
-            else
-               declare
-                  Response  : constant String :=
-                    Execute_Command_Full (JSON, Cmd, Req_Id);
-                  Resp_Path : constant String :=
-                    Dir & "/resp_" & Req_Id & ".json";
-               begin
-                  Atomic_Write (Resp_Path, Response);
-               end;
-            end if;
-         end;
+         Process_Command_File (Win, Dir, To_String (Entry_Name));
       else
          End_Search (Srch);
       end if;
