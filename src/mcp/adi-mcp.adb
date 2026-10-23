@@ -311,18 +311,26 @@ package body Adi.MCP is
    --  Command Parsing (uses json-ada)
    ---------------------------------------------------------------------------
 
+   --  The parser runs inside a block in each body below: an exception
+   --  raised while elaborating a subprogram's own declarations skips
+   --  that subprogram's handler, so a text that does not parse would
+   --  otherwise escape these functions instead of giving the default.
+
    function JSON_Get_String
      (JSON_Text : String; Key : String) return String
    is
       use Adi.JSON;
-      P    : Parsers.Parser := Parsers.Create (JSON_Text);
-      Root : constant Types.JSON_Value := P.Parse;
    begin
-      if Root.Contains (Key) then
-         return Root.Get (Key).Value;
-      else
-         return "";
-      end if;
+      declare
+         P    : Parsers.Parser := Parsers.Create (JSON_Text);
+         Root : constant Types.JSON_Value := P.Parse;
+      begin
+         if Root.Contains (Key) then
+            return Root.Get (Key).Value;
+         else
+            return "";
+         end if;
+      end;
    exception
       when others => return "";
    end JSON_Get_String;
@@ -336,13 +344,16 @@ package body Adi.MCP is
       Default   : Adi.JSON.JSON_Integer := 0) return Adi.JSON.JSON_Integer
    is
       use Adi.JSON;
-      P    : Parsers.Parser := Parsers.Create (JSON_Text);
-      Root : constant Types.JSON_Value := P.Parse;
    begin
-      if Root.Contains (Key) then
-         return Adi.JSON.JSON_Integer'(Root.Get (Key).Value);
-      end if;
-      return Default;
+      declare
+         P    : Parsers.Parser := Parsers.Create (JSON_Text);
+         Root : constant Types.JSON_Value := P.Parse;
+      begin
+         if Root.Contains (Key) then
+            return Adi.JSON.JSON_Integer'(Root.Get (Key).Value);
+         end if;
+         return Default;
+      end;
    exception
       when others =>
          return Default;
@@ -352,13 +363,16 @@ package body Adi.MCP is
      (JSON_Text : String; Key : String; Default : Integer := 0) return Integer
    is
       use Adi.JSON;
-      P    : Parsers.Parser := Parsers.Create (JSON_Text);
-      Root : constant Types.JSON_Value := P.Parse;
    begin
-      if Root.Contains (Key) then
-         return Integer (Adi.JSON.JSON_Integer'(Root.Get (Key).Value));
-      end if;
-      return Default;
+      declare
+         P    : Parsers.Parser := Parsers.Create (JSON_Text);
+         Root : constant Types.JSON_Value := P.Parse;
+      begin
+         if Root.Contains (Key) then
+            return Integer (Adi.JSON.JSON_Integer'(Root.Get (Key).Value));
+         end if;
+         return Default;
+      end;
    exception
       when others => return Default;
    end JSON_Get_Int;
@@ -368,16 +382,35 @@ package body Adi.MCP is
       return Boolean
    is
       use Adi.JSON;
-      P    : Parsers.Parser := Parsers.Create (JSON_Text);
-      Root : constant Types.JSON_Value := P.Parse;
    begin
-      if Root.Contains (Key) then
-         return Boolean'(Root.Get (Key).Value);
-      end if;
-      return Default;
+      declare
+         P    : Parsers.Parser := Parsers.Create (JSON_Text);
+         Root : constant Types.JSON_Value := P.Parse;
+      begin
+         if Root.Contains (Key) then
+            return Boolean'(Root.Get (Key).Value);
+         end if;
+         return Default;
+      end;
    exception
       when others => return Default;
    end JSON_Get_Bool;
+
+   --  Why JSON_Text does not parse, or "" when it does
+   function JSON_Error (JSON_Text : String) return String is
+      use Adi.JSON;
+   begin
+      declare
+         P    : Parsers.Parser := Parsers.Create (JSON_Text);
+         Root : constant Types.JSON_Value := P.Parse;
+         pragma Unreferenced (Root);
+      begin
+         return "";
+      end;
+   exception
+      when E : others =>
+         return Ada.Exceptions.Exception_Message (E);
+   end JSON_Error;
 
    ---------------------------------------------------------------------------
    --  Error Response Helper
@@ -1559,6 +1592,7 @@ package body Adi.MCP is
       use Ada.Directories;
       Cmd_Path  : constant String := Dir & "/" & Cmd_Name;
       JSON      : constant String := Read_File (Cmd_Path);
+      Parse_Err : constant String := JSON_Error (JSON);
       Cmd       : constant String := JSON_Get_String (JSON, "command");
       Req_Id_J  : constant String := JSON_Get_String (JSON, "req_id");
 
@@ -1587,6 +1621,14 @@ package body Adi.MCP is
       end if;
 
       if Req_Id'Length = 0 then
+         return;
+      end if;
+
+      --  Answer a command that cannot be read, or the client only
+      --  learns of it by timing out
+      if Parse_Err'Length > 0 then
+         Atomic_Write (Dir & "/resp_" & Req_Id & ".json",
+           Error_Response (Req_Id, "invalid command JSON: " & Parse_Err));
          return;
       end if;
 
