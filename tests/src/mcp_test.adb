@@ -930,6 +930,21 @@ procedure MCP_Test is
               "the response says the command JSON is invalid");
    end Test_Unreadable_Command;
 
+   procedure Test_Long_Command is
+      Pad      : constant String (1 .. 5000) := [others => 'x'];
+      Raised   : Boolean;
+      --  No command field: answered without a window, after a full read
+      Response : constant String :=
+        Answer ("long1", "{""req_id"": ""long1"", ""pad"": """ & Pad & """}",
+                Raised);
+   begin
+      Section ("Command line longer than 4096 bytes");
+
+      Assert (not Raised, "a long command does not raise");
+      Assert (Error_Of (Response) = "missing command field",
+              "a long command is read whole and parses");
+   end Test_Long_Command;
+
 begin
    Start_Suite ("MCP Test Suite");
    Put_Line ("");
@@ -950,6 +965,7 @@ begin
    Test_Style_Stores_Schema;
    Test_Font_Budget_Beyond_A_Natural;
    Test_Unreadable_Command;
+   Test_Long_Command;
 
    Test_Support.Finish;
 end MCP_Test;

@@ -264,16 +264,16 @@ package body Adi.MCP is
       use Ada.Text_IO;
       F      : File_Type;
       Result : Unbounded_String;
-      Line   : String (1 .. 4096);
-      Last   : Natural;
    begin
       Open (F, In_File, Path);
       while not End_Of_File (F) loop
-         Get_Line (F, Line, Last);
          if Length (Result) > 0 then
             Append (Result, ASCII.LF);
          end if;
-         Append (Result, Line (1 .. Last));
+         --  The function form reads the whole line. A fixed buffer split
+         --  longer lines, and the LF added between the pieces broke any
+         --  JSON string it fell into.
+         Append (Result, Get_Line (F));
       end loop;
       Close (F);
       return To_String (Result);
