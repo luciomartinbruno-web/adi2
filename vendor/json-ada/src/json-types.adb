@@ -14,7 +14,6 @@
 --  See the License for the specific language governing permissions and
 --  limitations under the License.
 
-with Ada.Characters.Handling;
 with Ada.Characters.Latin_1;
 with Ada.Strings.Bounded;
 with Ada.Strings.Unbounded;
@@ -59,7 +58,10 @@ package body JSON.Types is
          elsif C = '"' then
             raise Program_Error;
          elsif C /= '\' then
-            if Ada.Characters.Handling.Is_Control (C) then
+            --  Same check as the tokenizer: only U+0000 .. U+001F must be
+            --  escaped. Is_Control would also reject 16#7F# .. 16#9F#,
+            --  which are DEL and UTF-8 continuation bytes.
+            if C in NUL .. US then
                raise Program_Error;
             end if;
             SB.Append (Value, C);
